@@ -3,20 +3,24 @@ import mysql.connector
 import os
 import json
 from collections import defaultdict
+from dotenv import load_dotenv
 from openai import OpenAI
 
 # ---------------- CONFIG ----------------
 
+load_dotenv()
+
 DB_CONFIG = {
-    "host": "",
-    "port": "",
-    "database": "",
-    "user": "",
-    "password": ""
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT")),
+    "database": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD")
 }
 
+
 client = OpenAI(
-    api_key=""
+    api_key=os.getenv("OPENAI_API_KEY")
 )
 MODEL = "gpt-4o"
 

@@ -4,4 +4,4 @@ For installing libraries
 
 To run the app
 
-```streamlit run new3.py --server.address 0.0.0.0 --server.port 8501```
+```streamlit run product_catalog.py --server.address 0.0.0.0 --server.port 8501```

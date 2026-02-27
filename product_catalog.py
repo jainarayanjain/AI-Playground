@@ -43,6 +43,7 @@ def group_products(rows):
     for pid, sku, type_, url, handle in rows:
         grouped[pid]["sku"] = sku
         grouped[pid]["images"].append(url)
+        grouped[pid]["handle"] = handle
 
     return grouped
 
@@ -121,8 +122,8 @@ if run_btn:
                 cols = st.columns(len(info["images"]))
                 for i, img in enumerate(info["images"]):
                     cols[i].image(img, width=150)
-
-                final_prompt = prompt_template + f"\n\nProduct ID: {pid}"
+                handle = info["handle"]
+                final_prompt = prompt_template + f"\n\nProduct name: {handle}"
 
                 with st.spinner("Analyzing with AI..."):
                     result = analyze(final_prompt, info["images"])

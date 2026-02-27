@@ -40,42 +40,11 @@ def fetch_rows(query):
 def group_products(rows):
     grouped = defaultdict(lambda: {"sku": "", "images": []})
 
-    for pid, sku, type_, url in rows:
+    for pid, sku, type_, url, handle in rows:
         grouped[pid]["sku"] = sku
         grouped[pid]["images"].append(url)
 
     return grouped
-
-
-# ✅ FIXED: Proper image input format
-# def analyze(prompt, images):
-#
-#     content = [
-#         {
-#             "type": "input_text",
-#             "text": prompt
-#         }
-#     ]
-#
-#     # Add images correctly
-#     for img in images:
-#         content.append({
-#             "type": "input_image",
-#             "image_url": img
-#         })
-#
-#     response = client.responses.create(
-#         model=MODEL,
-#         temperature=0,
-#         input=[
-#             {
-#                 "role": "user",
-#                 "content": content
-#             }
-#         ]
-#     )
-#
-#     return response.output_text
 
 def analyze(prompt, images):
 

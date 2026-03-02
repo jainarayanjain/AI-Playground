@@ -20,10 +20,7 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD")
 }
 
-
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = "gpt-4o"
 
 # ---------------- FUNCTIONS ----------------
@@ -38,49 +35,50 @@ def fetch_rows(query):
     return rows
 
 
-# ✅ KEEPING GROUPING BY PRODUCT_ID (as requested)
 def group_products(rows):
-    grouped = defaultdict(lambda: {"sku": "", "images": []})
-
+    grouped = defaultdict(lambda: {"sku": "", "images": [], "handle": ""})
     for pid, sku, type_, url, handle in rows:
         grouped[pid]["sku"] = sku
         grouped[pid]["images"].append(url)
         grouped[pid]["handle"] = handle
-
     return grouped
 
+
 def analyze(prompt, images):
-
-    content = [
-        {
-            "type": "input_text",
-            "text": prompt
-        }
-    ]
-
+    content = [{"type": "input_text", "text": prompt}]
     for img in images:
-        content.append({
-            "type": "input_image",
-            "image_url": img
-        })
+        content.append({"type": "input_image", "image_url": img})
 
     response = client.responses.create(
         model=MODEL,
         temperature=0,
-        input=[
-            {
-                "role": "user",
-                "content": content
-            }
-        ],
-        text={                      # ✅ THIS is correct for Responses API
-            "format": {
-                "type": "json_object"
-            }
+        input=[{
+            "role": "user",
+            "content": content
+        }],
+        text={
+            "format": {"type": "json_object"}
         }
     )
 
     return response.output_text
+
+
+# ---------------- SESSION STATE INIT ----------------
+
+if "all_results" not in st.session_state:
+    st.session_state.all_results = []
+
+if "grouped_data" not in st.session_state:
+    st.session_state.grouped_data = None
+
+if "raw_outputs" not in st.session_state:
+    st.session_state.raw_outputs = {}
+
+if "analysis_done" not in st.session_state:
+    st.session_state.analysis_done = False
+
+
 # ---------------- UI ----------------
 
 st.set_page_config(layout="wide")
@@ -89,85 +87,103 @@ st.title("🧠 Footwear AI Classification Tool")
 col1, col2 = st.columns(2)
 
 with col1:
-    sql_query = st.text_area(
-        "SQL Query",
-        height=250,
-        placeholder="Paste your SQL here..."
-    )
+    sql_query = st.text_area("SQL Query", height=250)
 
 with col2:
-    prompt_template = st.text_area(
-        "Prompt Template",
-        height=250,
-        placeholder="Paste your classification prompt here..."
-    )
+    prompt_template = st.text_area("Prompt Template", height=250)
 
-run_btn = st.button("Run Analysis")
+run_btn = st.button("Run Analysis", type="primary")
 
-# ---------------- RUN ----------------
-all_results = []
+
+# ---------------- RUN ANALYSIS ----------------
+
 if run_btn:
+    st.session_state.all_results = []
+    st.session_state.grouped_data = None
+    st.session_state.raw_outputs = {}
+    st.session_state.analysis_done = False
+
     if not sql_query or not prompt_template:
         st.warning("SQL and Prompt both required")
     else:
         try:
             rows = fetch_rows(sql_query)
             grouped = group_products(rows)
+            st.session_state.grouped_data = grouped
 
             for pid, info in grouped.items():
 
-                st.divider()
-                st.subheader(f"Product ID: {pid} | SKU: {info['sku']}")
+                final_prompt = prompt_template + f"\n\nProduct name: {info['handle']}"
 
-                # Show images
-                st.write("Images:")
-                cols = st.columns(len(info["images"]))
-                for i, img in enumerate(info["images"]):
-                    cols[i].image(img, width=150)
-                handle = info["handle"]
-                final_prompt = prompt_template + f"\n\nProduct name: {handle}"
-
-                with st.spinner("Analyzing with AI..."):
+                with st.spinner(f"Analyzing Product {pid}..."):
                     result = analyze(final_prompt, info["images"])
 
-                st.write("### Raw AI Output")
-                st.code(result)
+                st.session_state.raw_outputs[pid] = result
 
-                # Try parsing JSON safely
                 try:
                     parsed = json.loads(result)
+
                     row_data = {
                         "product_id": pid,
                         "sku": info["sku"],
                         "handle": info["handle"],
                     }
 
-                    # If AI returns key-value pairs
                     for key, value in parsed.items():
                         row_data[key] = value
 
-                    all_results.append(row_data)
-                    st.write("### Parsed Result")
-                    st.json(parsed)
+                    st.session_state.all_results.append(row_data)
 
-                except Exception:
-                    st.error("AI did not return valid JSON.")
+                except:
+                    pass
 
-            if all_results:
-                df = pd.DataFrame(all_results)
+            st.session_state.analysis_done = True
 
-                # Create Excel in memory
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df.to_excel(writer, index=False, sheet_name="Results")
-
-                output.seek(0)
-
-                st.download_button(
-                    label="📥 Download Excel",
-                    data=output,
-                    file_name="footwear_classification_results.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
         except Exception as e:
             st.error(str(e))
+
+
+# ---------------- DISPLAY RESULTS (LIKE YOUR ORIGINAL UI) ----------------
+
+if st.session_state.analysis_done and st.session_state.grouped_data:
+
+    for pid, info in st.session_state.grouped_data.items():
+
+        st.divider()
+        st.subheader(f"Product ID: {pid} | SKU: {info['sku']}")
+
+        # Show images
+        st.write("Images:")
+        cols = st.columns(len(info["images"]))
+        for i, img in enumerate(info["images"]):
+            cols[i].image(img, width=150)
+
+        # Show raw AI output
+        if pid in st.session_state.raw_outputs:
+            st.write("### Raw AI Output")
+            st.code(st.session_state.raw_outputs[pid])
+
+            try:
+                parsed = json.loads(st.session_state.raw_outputs[pid])
+                st.write("### Parsed Result")
+                st.json(parsed)
+            except:
+                st.error("AI did not return valid JSON.")
+
+    # -------- Excel Download --------
+    if st.session_state.all_results:
+
+        df = pd.DataFrame(st.session_state.all_results)
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Results")
+
+        output.seek(0)
+
+        st.download_button(
+            label="📥 Download Excel",
+            data=output,
+            file_name="footwear_classification_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )

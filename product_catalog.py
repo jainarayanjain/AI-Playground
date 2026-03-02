@@ -5,6 +5,8 @@ import json
 from collections import defaultdict
 from dotenv import load_dotenv
 from openai import OpenAI
+import pandas as pd
+from io import BytesIO
 
 # ---------------- CONFIG ----------------
 
@@ -103,7 +105,7 @@ with col2:
 run_btn = st.button("Run Analysis")
 
 # ---------------- RUN ----------------
-
+all_results = []
 if run_btn:
     if not sql_query or not prompt_template:
         st.warning("SQL and Prompt both required")
@@ -134,12 +136,38 @@ if run_btn:
                 # Try parsing JSON safely
                 try:
                     parsed = json.loads(result)
+                    row_data = {
+                        "product_id": pid,
+                        "sku": info["sku"],
+                        "handle": info["handle"],
+                    }
 
+                    # If AI returns key-value pairs
+                    for key, value in parsed.items():
+                        row_data[key] = value
+
+                    all_results.append(row_data)
                     st.write("### Parsed Result")
                     st.json(parsed)
 
                 except Exception:
                     st.error("AI did not return valid JSON.")
 
+            if all_results:
+                df = pd.DataFrame(all_results)
+
+                # Create Excel in memory
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    df.to_excel(writer, index=False, sheet_name="Results")
+
+                output.seek(0)
+
+                st.download_button(
+                    label="📥 Download Excel",
+                    data=output,
+                    file_name="footwear_classification_results.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
         except Exception as e:
             st.error(str(e))

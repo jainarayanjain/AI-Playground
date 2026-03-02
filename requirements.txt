@@ -2,3 +2,4 @@ streamlit
 mysql-connector-python
 openai
 python-dotenv
+xlsxwriter

@@ -56,15 +56,13 @@ def analyze(prompt, images):
             "role": "user",
             "content": content
         }],
-        text={
-            "format": {"type": "json_object"}
-        }
+        text={"format": {"type": "json_object"}}
     )
 
     return response.output_text
 
 
-# ---------------- SESSION STATE INIT ----------------
+# ---------------- SESSION STATE ----------------
 
 if "all_results" not in st.session_state:
     st.session_state.all_results = []
@@ -95,7 +93,7 @@ with col2:
 run_btn = st.button("Run Analysis", type="primary")
 
 
-# ---------------- RUN ANALYSIS ----------------
+# ---------------- RUN ANALYSIS (FAULT TOLERANT) ----------------
 
 if run_btn:
     st.session_state.all_results = []
@@ -111,39 +109,63 @@ if run_btn:
             grouped = group_products(rows)
             st.session_state.grouped_data = grouped
 
-            for pid, info in grouped.items():
+            total = len(grouped)
+            progress_bar = st.progress(0)
 
-                final_prompt = prompt_template + f"\n\nProduct name: {info['handle']}"
+            for index, (pid, info) in enumerate(grouped.items()):
 
-                with st.spinner(f"Analyzing Product {pid}..."):
-                    result = analyze(final_prompt, info["images"])
 
-                st.session_state.raw_outputs[pid] = result
 
                 try:
-                    parsed = json.loads(result)
+                    final_prompt = prompt_template + f"\n\nProduct name: {info['handle']}"
+                    result = analyze(final_prompt, info["images"])
 
-                    row_data = {
+
+                    # Store raw output
+                    st.session_state.raw_outputs[pid] = result
+
+                    try:
+                        parsed = json.loads(result)
+
+                        row_data = {
+                            "product_id": pid,
+                            "sku": info["sku"],
+                            "handle": info["handle"],
+                            "status": "success"
+                        }
+
+                        for key, value in parsed.items():
+                            row_data[key] = value
+
+                        st.session_state.all_results.append(row_data)
+
+                    except Exception:
+                        st.session_state.all_results.append({
+                            "product_id": pid,
+                            "sku": info["sku"],
+                            "handle": info["handle"],
+                            "status": "invalid_json"
+                        })
+
+                except Exception as e:
+                    # Catch API failure or any unexpected error
+                    st.session_state.all_results.append({
                         "product_id": pid,
                         "sku": info["sku"],
                         "handle": info["handle"],
-                    }
+                        "status": "failed",
+                        "error": str(e)
+                    })
 
-                    for key, value in parsed.items():
-                        row_data[key] = value
-
-                    st.session_state.all_results.append(row_data)
-
-                except:
-                    pass
+                progress_bar.progress((index + 1) / total)
 
             st.session_state.analysis_done = True
 
         except Exception as e:
-            st.error(str(e))
+            st.error(f"Unexpected Error: {str(e)}")
 
 
-# ---------------- DISPLAY RESULTS (LIKE YOUR ORIGINAL UI) ----------------
+# ---------------- DISPLAY RESULTS ----------------
 
 if st.session_state.analysis_done and st.session_state.grouped_data:
 
@@ -158,7 +180,7 @@ if st.session_state.analysis_done and st.session_state.grouped_data:
         for i, img in enumerate(info["images"]):
             cols[i].image(img, width=150)
 
-        # Show raw AI output
+        # Show raw + parsed output if available
         if pid in st.session_state.raw_outputs:
             st.write("### Raw AI Output")
             st.code(st.session_state.raw_outputs[pid])
@@ -168,7 +190,7 @@ if st.session_state.analysis_done and st.session_state.grouped_data:
                 st.write("### Parsed Result")
                 st.json(parsed)
             except:
-                st.error("AI did not return valid JSON.")
+                st.warning("Invalid JSON returned.")
 
     # -------- Excel Download --------
     if st.session_state.all_results:
